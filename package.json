@@ -1,0 +1,38 @@
+{
+  "name": "type-import-codemod",
+  "version": "1.0.0",
+  "description": "Combine type and value imports using Typescript 4.5 type modifier syntax",
+  "license": "MIT",
+  "keywords": [
+    "jscodeshift",
+    "codemod",
+    "codeshift",
+    "typescript",
+    "import",
+    "type"
+  ],
+  "main": "dist/codeshift.config.js",
+  "type": "commonjs",
+  "bin": {
+    "type-import-codemod": "./bin/type-import-codemod.js"
+  },
+  "files": [
+    "src/transform.ts"
+  ],
+  "scripts": {
+    "test:ci": "vitest run",
+    "test": "vitest"
+  },
+  "devDependencies": {
+    "@codeshift/test-utils": "^0.1.4",
+    "@types/jscodeshift": "^0.11.3",
+    "@types/node": "^16.11.0",
+    "prettier": "^2.5.1",
+    "typescript": "4.6.X",
+    "vitest": "^0.6.1"
+  },
+  "dependencies": {
+    "execa": "^5.1.1",
+    "jscodeshift": "^0.13.1"
+  }
+}
