@@ -1,6 +1,6 @@
 {
   "name": "type-import-codemod",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Combine type and value imports using Typescript 4.5 type modifier syntax",
   "repository": {
     "type": "git",
