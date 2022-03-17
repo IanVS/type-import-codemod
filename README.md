@@ -1,6 +1,6 @@
 # type-import-codemod
 
-Combines your type and value imports together into a single statement, using Typescript 4.5's type modifier syntax.
+Combines your type and value imports together into a single statement, using [Typescript 4.5's type modifier syntax](https://devblogs.microsoft.com/typescript/announcing-typescript-4-5/#type-on-import-names).
 
 Before:
 

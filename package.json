@@ -2,6 +2,11 @@
   "name": "type-import-codemod",
   "version": "1.0.0",
   "description": "Combine type and value imports using Typescript 4.5 type modifier syntax",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/IanVS/type-import-codemod.git"
+  },
+  "homepage": "https://github.com/IanVS/type-import-codemod/#readme",
   "license": "MIT",
   "keywords": [
     "jscodeshift",
