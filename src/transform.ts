@@ -3,13 +3,13 @@ import { API, FileInfo, ASTPath, ImportDeclaration } from 'jscodeshift';
 
 export default function transformer(file: FileInfo, api: API) {
   const j = api.jscodeshift;
-  const source = j(file.source);
+  const ast = j(file.source);
 
   // Collect a map of source to nodePath
   const typeImportMap = new Map<string, ASTPath<ImportDeclaration>>();
 
   // Find type imports
-  source
+  ast
     .find(j.ImportDeclaration, {
       importKind: 'type',
     })
@@ -20,8 +20,7 @@ export default function transformer(file: FileInfo, api: API) {
         if (typeImportMap.has(source)) {
           // Add specifiers to what's already in the map for this source
           const prev = typeImportMap.get(source);
-          prev.node.specifiers = [...prev.node.specifiers, ...node.specifiers];
-          typeImportMap.set(source, prev);
+          prev.node.specifiers.push(...node.specifiers);
         } else {
           typeImportMap.set(source, nodePath);
         }
@@ -29,41 +28,42 @@ export default function transformer(file: FileInfo, api: API) {
     });
 
   // Look for value imports with the same source as a type import
-  source
+  ast
     .find(j.ImportDeclaration, {
       importKind: 'value',
     })
-    .replaceWith((nodePath) => {
+    .forEach((nodePath) => {
       const { node } = nodePath;
       const source = node.source.value;
 
       // Cannot combine with namespace imports
       const isNamespaceImport = node.specifiers.some((s) => s.type === 'ImportNamespaceSpecifier');
+      if (isNamespaceImport) return;
 
-      if (!isNamespaceImport && typeof source === 'string' && typeImportMap.has(source)) {
+      if (typeof source === 'string' && typeImportMap.has(source)) {
         const otherNode = typeImportMap.get(source);
+
+        const typeSpecifiers = otherNode.node.specifiers.map((s) => {
+          // @ts-expect-error
+          s.importKind = 'type';
+          return s;
+        });
+
         // Add type imports to the end
-        node.specifiers = node.specifiers.concat(
-          otherNode.node.specifiers.map((s) => {
-            // @ts-expect-error https://github.com/benjamn/ast-types/pull/725
-            s.importKind = 'type';
-            return s;
-          })
-        );
+        node.specifiers.push(...typeSpecifiers);
         typeImportMap.delete(source);
       }
-      return node;
     });
 
   // Remove type imports that we combined into value imports, return results
-  return source
+  return ast
     .find(j.ImportDeclaration, {
       importKind: 'type',
     })
     .filter((nodePath) => {
       const { node } = nodePath;
       const source = node.source.value;
-      return typeof source !== 'string' || !typeImportMap.has(source);
+      return typeof source === 'string' && !typeImportMap.has(source);
     })
     .remove()
     .toSource();
