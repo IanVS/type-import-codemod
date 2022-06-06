@@ -7,12 +7,6 @@ function format(source: string): string {
   return prettier
     .format(source, {
       parser: 'babel-ts',
-      trailingComma: 'all',
-      semi: true,
-      tabWidth: 2,
-      useTabs: false,
-      singleQuote: true,
-      printWidth: 100,
     })
     .trim();
 }
