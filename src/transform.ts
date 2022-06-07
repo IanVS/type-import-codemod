@@ -1,70 +1,72 @@
-/* eslint-disable import/no-default-export, unicorn/no-array-callback-reference */
-import { API, FileInfo, ASTPath, ImportDeclaration } from 'jscodeshift';
+import { Project, SourceFile } from 'ts-morph';
 
-export default function transformer(file: FileInfo, api: API) {
-  const j = api.jscodeshift;
-  const ast = j(file.source);
+const typeOnlyDefinitions = ['type', 'interface'];
 
-  // Collect a map of source to nodePath
-  const typeImportMap = new Map<string, ASTPath<ImportDeclaration>>();
+export interface Options {
+  /** Write output to stdout instead of overwriting files. */
+  dryRun: boolean;
+  /** Glob patterns to .ts or .tsx files. */
+  globs: string[];
+  /** Path to tsconfig.json file. */
+  tsconfigPath: string;
+}
 
-  // Find type imports
-  ast
-    .find(j.ImportDeclaration, {
-      importKind: 'type',
-    })
-    .forEach((nodePath) => {
-      const { node } = nodePath;
-      const source = node.source.value;
-      if (typeof source === 'string') {
-        if (typeImportMap.has(source)) {
-          // Add specifiers to what's already in the map for this source
-          const prev = typeImportMap.get(source);
-          prev.node.specifiers.push(...node.specifiers);
-        } else {
-          typeImportMap.set(source, nodePath);
-        }
-      }
-    });
+function getValueImportDeclaration(sourceFile: SourceFile, moduleSpecifier: string) {
+  return sourceFile.getImportDeclaration((declaration) => {
+    const isNamespaceImport = Boolean(declaration.getNamespaceImport());
+    return !declaration.isTypeOnly() && declaration.getModuleSpecifierValue() === moduleSpecifier && !isNamespaceImport;
+  });
+}
 
-  // Look for value imports with the same source as a type import
-  ast
-    .find(j.ImportDeclaration, {
-      importKind: 'value',
-    })
-    .forEach((nodePath) => {
-      const { node } = nodePath;
-      const source = node.source.value;
+export default function transform({ dryRun, globs, tsconfigPath }: Options) {
+  const project = new Project({
+    tsConfigFilePath: tsconfigPath,
+    skipFileDependencyResolution: true,
+  });
+  const sourceFiles = project.addSourceFilesAtPaths(globs);
 
-      // Cannot combine with namespace imports
-      const isNamespaceImport = node.specifiers.some((s) => s.type === 'ImportNamespaceSpecifier');
-      if (isNamespaceImport) return;
+  sourceFiles.forEach(async (sourceFile) => {
+    const importDeclarations = sourceFile.getImportDeclarations();
 
-      if (typeof source === 'string' && typeImportMap.has(source)) {
-        const otherNode = typeImportMap.get(source);
+    importDeclarations.forEach((importDeclaration) => {
+      const isTypeImportDeclaration = importDeclaration.isTypeOnly();
+      const namedImports = importDeclaration.getNamedImports();
+      const moduleSpecifier = importDeclaration.getModuleSpecifierValue();
+      const matchingValueImportDeclaration = getValueImportDeclaration(sourceFile, moduleSpecifier);
 
-        const typeSpecifiers = otherNode.node.specifiers.map((s) => {
-          // @ts-expect-error
-          s.importKind = 'type';
-          return s;
+      // Combine type namedImports with value imports (can't combine default type or namespace)
+      if (isTypeImportDeclaration && matchingValueImportDeclaration && namedImports.length) {
+        namedImports.forEach((namedImport) => {
+          namedImport.setIsTypeOnly(true);
+          matchingValueImportDeclaration.addNamedImport(namedImport.print());
         });
+        importDeclaration.remove();
+      }
 
-        // Add type imports to the end
-        node.specifiers.push(...typeSpecifiers);
-        typeImportMap.delete(source);
+      // Check named imports for type imports not marked as such
+      if (!isTypeImportDeclaration) {
+        namedImports.forEach((namedImport) => {
+          if (isTypeImportDeclaration) {
+            if (matchingValueImportDeclaration) {
+            }
+          } else {
+            // Is this a type or value import?
+            const definitions = namedImport.getNameNode().getDefinitions();
+            definitions.forEach((definition) => {
+              // Set type import specifiers as type import if not already done
+              if (typeOnlyDefinitions.includes(definition.getKind()) && !namedImport.isTypeOnly()) {
+                namedImport.setIsTypeOnly(true);
+              }
+            });
+          }
+        });
       }
     });
 
-  // Remove type imports that we combined into value imports, return results
-  return ast
-    .find(j.ImportDeclaration, {
-      importKind: 'type',
-    })
-    .filter((nodePath) => {
-      const { node } = nodePath;
-      const source = node.source.value;
-      return typeof source === 'string' && !typeImportMap.has(source);
-    })
-    .remove()
-    .toSource();
+    if (dryRun) {
+      console.log(sourceFile.print());
+    } else {
+      await sourceFile.save();
+    }
+  });
 }

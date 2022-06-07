@@ -1,7 +1,6 @@
-import { applyTransform } from '@codeshift/test-utils';
 import prettier from 'prettier';
-import { describe, it, expect } from 'vitest';
-import transformer from './transform';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import transformer, { Options } from './transform';
 
 function format(source: string): string {
   return prettier
@@ -11,161 +10,102 @@ function format(source: string): string {
     .trim();
 }
 
+function formatLog(log: string[]) {
+  return format(log.join('\n'));
+}
+
+const consoleSpy = vi.spyOn(console, 'log');
+
+function buildOptions(filePath: string | string[], configOverrides: Partial<Options> = {}) {
+  const baseOptions = {
+    dryRun: true,
+    tsconfigPath: './tsconfig.json',
+  };
+  const globs = Array.isArray(filePath) ? filePath : [filePath];
+  return {
+    ...baseOptions,
+    configOverrides,
+    globs,
+  };
+}
+
 describe('combine-type-and-value-imports-codemod', () => {
-  it('should combine type imports with named imports', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import {value} from './source';
-        import type {MyType} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-       import {value, type MyType} from './source';
-    `)
-    );
+  beforeEach(() => {
+    consoleSpy.mockReset();
   });
 
-  it('should place value import first', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import {value} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import {value, type MyType} from './source';
-    `)
-    );
+  it('should combine type imports with named imports', () => {
+    transformer(buildOptions('test/fixtures/type-and-value.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot('"import { value, type Type } from \\"./mixed-exports\\";"');
   });
 
   it('should combine type import and default import', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import defaultValue from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import defaultValue, {type MyType} from './source';
-    `)
-    );
+    transformer(buildOptions('test/fixtures/type-and-default.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot('"import Default, { type Type } from \\"./mixed-exports\\";"');
   });
 
   it('should not combine type import and namespace import', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import * as Namespace from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import type {MyType} from './source';
-        import * as Namespace from './source';
-    `)
-    );
+    transformer(buildOptions('test/fixtures/type-and-namespace.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(`
+      "import type { Type } from \\"./mixed-exports\\";
+      import * as Namespace from \\"./mixed-exports\\";"
+    `);
   });
 
   it('should support aliased named imports', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import {value as alias} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-      import {value as alias, type MyType} from './source';
-    `)
-    );
+    transformer(buildOptions('test/fixtures/aliased-type-and-value.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(`
+      "import {
+        value as aliasedValue,
+        type Type as AliasedType,
+      } from \\"./mixed-exports\\";"
+    `);
   });
 
   it('should combine multiple imports from the same source', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType, SecondType} from './source';
-        import {value, SecondValue} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import {value, SecondValue, type MyType, type SecondType} from './source';
-    `)
+    transformer(buildOptions('test/fixtures/multiple-type-and-value.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(
+      '"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"'
     );
   });
 
-  it('should combine multiple groups of imports', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import type {OtherType} from './other';
-        import {value} from './source';
-        import {otherValue} from './other';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import {value, type MyType} from './source';
-        import {otherValue, type OtherType} from './other';
-    `)
-    );
+  it('should combine multiple import declarations', () => {
+    transformer(buildOptions('test/fixtures/multiple-imports.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(`
+      "import { name, type Foo } from \\"./default-type-export\\";
+      import { value, type Type } from \\"./mixed-exports\\";"
+    `);
   });
 
-  it('should combine multiple imports statements from the same source', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import type {SecondType} from './source';
-        import {value} from './source';
-        import {SecondValue} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    // TODO: ideally we'd combine these two as well, but this is an edge case, and the
-    // actual result here is not broken code.
-    expect(result).toEqual(
-      format(`
-        import {value, type MyType, type SecondType} from './source';
-        import {SecondValue} from './source';
-    `)
-    );
+  it('should combine multiple import declarations from the same source', () => {
+    transformer(buildOptions('test/fixtures/multiple-import-declarations.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    // TODO: handle multiple value import declarations from same module
+    expect(result).toMatchInlineSnapshot(`
+      "import Default, { type Type, type Interface } from \\"./mixed-exports\\";
+      import { value } from \\"./mixed-exports\\";"
+    `);
   });
 
-  it('should not impact imports from different sources', () => {
-    const result = applyTransform(
-      transformer,
-      format(`
-        import type {MyType} from './source';
-        import type {OtherType} from './other';
-        import {thirdValue} from './third'
-        import {value} from './source';
-    `),
-      { parser: 'ts' }
-    );
-    expect(result).toEqual(
-      format(`
-        import type {OtherType} from './other';
-        import {thirdValue} from './third'
-        import {value, type MyType} from './source';
-    `)
-    );
+  it('should convert named imports into type imports when possible', () => {
+    transformer(buildOptions('test/fixtures/implicit-named-types.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot('"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"');
+  });
+
+  // TODO: this should be combined into a single import declaration.
+  it('should convert named imports into type imports and combine with other type imports', () => {
+    transformer(buildOptions('test/fixtures/implicit-named-types-and-value.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(`
+      "import { value } from \\"./mixed-exports\\";
+      import { type Type, type Interface } from \\"./mixed-exports\\";"
+    `);
   });
 });
