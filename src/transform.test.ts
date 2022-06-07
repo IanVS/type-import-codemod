@@ -86,26 +86,33 @@ describe('combine-type-and-value-imports-codemod', () => {
   it('should combine multiple import declarations from the same source', () => {
     transformer(buildOptions('test/fixtures/multiple-import-declarations.ts'));
     const result = formatLog(consoleSpy.mock.calls[0]);
-    // TODO: handle multiple value import declarations from same module
-    expect(result).toMatchInlineSnapshot(`
-      "import Default, { type Type, type Interface } from \\"./mixed-exports\\";
-      import { value } from \\"./mixed-exports\\";"
-    `);
+    expect(result).toMatchInlineSnapshot(
+      '"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"'
+    );
   });
 
   it('should convert named imports into type imports when possible', () => {
     transformer(buildOptions('test/fixtures/implicit-named-types.ts'));
     const result = formatLog(consoleSpy.mock.calls[0]);
-    expect(result).toMatchInlineSnapshot('"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"');
+    expect(result).toMatchInlineSnapshot(
+      '"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"'
+    );
   });
 
-  // TODO: this should be combined into a single import declaration.
   it('should convert named imports into type imports and combine with other type imports', () => {
     transformer(buildOptions('test/fixtures/implicit-named-types-and-value.ts'));
     const result = formatLog(consoleSpy.mock.calls[0]);
+    expect(result).toMatchInlineSnapshot(
+      '"import Default, { value, type Type, type Interface } from \\"./mixed-exports\\";"'
+    );
+  });
+
+  it('should keep default import if more than one from the same module', () => {
+    transformer(buildOptions('test/fixtures/implicit-named-types-and-value-multiple-defaults.ts'));
+    const result = formatLog(consoleSpy.mock.calls[0]);
     expect(result).toMatchInlineSnapshot(`
-      "import { value } from \\"./mixed-exports\\";
-      import { type Type, type Interface } from \\"./mixed-exports\\";"
+      "import Default1, { value, type Type } from \\"./mixed-exports\\";
+      import Default2 from \\"./mixed-exports\\";"
     `);
   });
 });
