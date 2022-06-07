@@ -16,10 +16,10 @@
     "import",
     "type"
   ],
-  "main": "dist/codeshift.config.js",
-  "type": "commonjs",
+  "main": "src/transform.ts",
+  "type": "module",
   "bin": {
-    "type-import-codemod": "./bin/type-import-codemod.js"
+    "type-import-codemod": "./bin/type-import-codemod.ts"
   },
   "files": [
     "src/transform.ts"
@@ -37,7 +37,11 @@
     "vitest": "^0.6.1"
   },
   "dependencies": {
+    "chalk": "^5.0.1",
+    "commander": "^9.3.0",
     "execa": "^5.1.1",
-    "jscodeshift": "^0.13.1"
+    "jscodeshift": "^0.13.1",
+    "ts-morph": "^15.1.0",
+    "tsx": "^3.4.2"
   }
 }
